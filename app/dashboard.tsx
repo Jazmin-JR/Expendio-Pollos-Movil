@@ -1,15 +1,8 @@
 import DashboardCard from '@/components/DashboardCard';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import {
-    ArchiveBoxIcon,
-    BellAlertIcon,
-    ChartBarIcon,
-    CurrencyDollarIcon,
-    ExclamationTriangleIcon,
-    TruckIcon
-} from 'react-native-heroicons/outline';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 const Drawer = createDrawerNavigator();
 
@@ -27,15 +20,15 @@ function HomeScreen() {
       <Text style={styles.date}>{fechaActual.charAt(0).toUpperCase() + fechaActual.slice(1)}</Text>
 
       {/* Cards */}
-      <DashboardCard title="Productos en Stock" value="0" subtitle="0 con stock bajo" icon={<ArchiveBoxIcon size={32} color="#f59e0b" />} />
-      <DashboardCard title="Rutas de Hoy" value="0" subtitle="0 completadas" icon={<TruckIcon size={32} color="#f59e0b" />} />
-      <DashboardCard title="Ventas de Hoy" value="0" subtitle="0 completadas" icon={<ChartBarIcon size={32} color="#f59e0b" />} />
-      <DashboardCard title="Total del Día" value="0" subtitle="0 completadas" icon={<CurrencyDollarIcon size={32} color="#f59e0b" />} />
+      <DashboardCard title="Productos en Stock" value="0" subtitle="0 con stock bajo" icon={<Ionicons name="cube" size={32} color="#f59e0b" />} />
+      <DashboardCard title="Rutas de Hoy" value="0" subtitle="0 completadas" icon={<Ionicons name="car" size={32} color="#f59e0b" />} />
+      <DashboardCard title="Ventas de Hoy" value="0" subtitle="0 completadas" icon={<Ionicons name="bar-chart" size={32} color="#f59e0b" />} />
+      <DashboardCard title="Total del Día" value="0" subtitle="0 completadas" icon={<Ionicons name="cash" size={32} color="#f59e0b" />} />
 
       {/* Secciones */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <BellAlertIcon size={22} color="#f59e0b" />
+          <Ionicons name="notifications" size={22} color="#f59e0b" />
           <Text style={styles.sectionTitle}>Alertas de Stock</Text>
         </View>
         <Text style={styles.alertText}>No hay productos con stock bajo</Text>
@@ -43,7 +36,7 @@ function HomeScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <TruckIcon size={22} color="#f59e0b" />
+          <Ionicons name="car" size={22} color="#f59e0b" />
           <Text style={styles.sectionTitle}>Rutas Activas</Text>
         </View>
         <Text style={styles.alertText}>No hay rutas activas</Text>
@@ -51,7 +44,7 @@ function HomeScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <ExclamationTriangleIcon size={22} color="#f59e0b" />
+          <Ionicons name="warning" size={22} color="#f59e0b" />
           <Text style={styles.sectionTitle}>Alertas de Ventas</Text>
         </View>
         <Text style={styles.alertText}>No hay ventas registradas</Text>
@@ -86,10 +79,7 @@ export default function Dashboard() {
         headerTintColor: '#000', // Texto e ícono negro
         headerTitle: '',
         headerRight: () => (
-          <Image
-            source={require('@/assets/logo-nuevo.png')}
-            style={{ width: 40, height: 40, marginRight: 15 }}
-          />
+          <Ionicons name="restaurant" size={32} color="#f59e0b" style={{ marginRight: 15 }} />
         ),
         drawerActiveBackgroundColor: '#fde68a',
         drawerActiveTintColor: '#000',
