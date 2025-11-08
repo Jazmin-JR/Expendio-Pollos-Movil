@@ -99,10 +99,26 @@ export default function LoginScreen() {
 
       const data = await response.json();
 
-      if (data.token) {
+      // El backend devuelve: { success: true, data: { usuario: {...}, token: "..." } }
+      if (data.success && data.data && data.data.token) {
+        // ✅ Guardar el token (ruta correcta: data.data.token)
+        await AsyncStorage.setItem('authToken', data.data.token);
+        console.log('Token guardado correctamente');
+        console.log('Token:', data.data.token.substring(0, 20) + '...');
+      } else if (data.token) {
+        // Fallback para estructura antigua
         await AsyncStorage.setItem('authToken', data.token);
+        console.log('Token guardado (estructura antigua)');
+      } else {
+        console.error('Error: No se recibió token en la respuesta');
+        console.error('Respuesta completa:', JSON.stringify(data, null, 2));
       }
-      if (data.user) {
+
+      // Guardar datos del usuario
+      if (data.success && data.data && data.data.usuario) {
+        await AsyncStorage.setItem('userData', JSON.stringify(data.data.usuario));
+      } else if (data.user) {
+        // Fallback para estructura antigua
         await AsyncStorage.setItem('userData', JSON.stringify(data.user));
       }
 

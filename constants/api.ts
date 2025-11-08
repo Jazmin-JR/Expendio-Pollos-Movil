@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 // Configuración de la API
 // Para dispositivos físicos, configura tu IP local aquí:
-const PHYSICAL_DEVICE_IP = '192.168.1.18'; // Cambia esta IP si es necesario
+const PHYSICAL_DEVICE_IP = '192.168.1.76'; // Cambia esta IP si es necesario
 const USE_PHYSICAL_IP = true; // true para dispositivos físicos, false para emuladores
 
 // Para Android emulador: usa 10.0.2.2
