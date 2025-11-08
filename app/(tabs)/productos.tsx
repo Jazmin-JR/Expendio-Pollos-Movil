@@ -1,12 +1,30 @@
-import { StyleSheet, Text, View, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AddProductModal from '@/components/AddProductModal';
 
 export default function ProductosScreen() {
+  const [isModalVisible, setModalVisible] = useState(false);
+
+  const handleProductAdded = () => {
+    // Aquí puedes recargar la lista de productos
+    console.log('Producto agregado, actualizando lista...');
+    // TODO: Implementar la lógica para recargar la lista de productos
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="cube" size={32} color="#f59e0b" />
-        <Text style={styles.title}>Productos</Text>
+        <View style={styles.headerLeft}>
+          <Ionicons name="cube" size={32} color="#f59e0b" />
+          <Text style={styles.title}>Productos</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setModalVisible(true)}>
+          <Ionicons name="add" size={20} color="white" />
+          <Text style={styles.addButtonText}>Agregar</Text>
+        </TouchableOpacity>
       </View>
       <ScrollView style={styles.content}>
         <View style={styles.card}>
@@ -14,6 +32,12 @@ export default function ProductosScreen() {
           <Text style={styles.cardText}>Aquí se mostrarán los productos disponibles</Text>
         </View>
       </ScrollView>
+
+      <AddProductModal
+        isVisible={isModalVisible}
+        onClose={() => setModalVisible(false)}
+        onProductAdded={handleProductAdded}
+      />
     </View>
   );
 }
@@ -26,16 +50,35 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 20,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#111',
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f59e0b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 6,
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   content: {
     flex: 1,

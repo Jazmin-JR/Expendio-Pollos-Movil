@@ -50,17 +50,47 @@ export default function LoginScreen() {
 
       if (!response.ok) {
         let errorMessage = 'Error al iniciar sesión';
+        let errorDetails = '';
+        
         try {
           const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch {}
+          console.log('Datos del error del servidor:', errorData);
+          
+          // Intentar obtener el mensaje de error más específico
+          errorMessage = errorData.message || errorData.error || errorData.msg || errorMessage;
+          
+          // Si hay más detalles, guardarlos
+          if (errorData.details) {
+            errorDetails = errorData.details;
+          } else if (errorData.stack && __DEV__) {
+            // Solo mostrar stack en desarrollo
+            errorDetails = errorData.stack;
+          }
+        } catch (parseError) {
+          // Si no se puede parsear el JSON, intentar leer como texto
+          console.log('No se pudo parsear el error como JSON:', parseError);
+          try {
+            const textError = await response.text();
+            console.log('Error como texto:', textError);
+            if (textError) {
+              errorMessage = textError;
+            }
+          } catch {}
+        }
 
+        // Mensajes específicos según el código de estado
         if (response.status === 401) {
           errorMessage = 'Usuario o contraseña incorrectos';
         } else if (response.status === 404) {
           errorMessage = `Ruta no encontrada: ${LOGIN_ENDPOINT}`;
         } else if (response.status === 500) {
-          errorMessage = 'Error interno del servidor';
+          errorMessage = errorMessage || 'Error interno del servidor';
+          errorMessage += '\n\nPor favor, verifica que el servidor esté funcionando correctamente.';
+          if (errorDetails && __DEV__) {
+            errorMessage += `\n\nDetalles: ${errorDetails}`;
+          }
+        } else if (response.status === 400) {
+          errorMessage = errorMessage || 'Datos inválidos. Verifica tu email y contraseña.';
         }
 
         console.error('Error del servidor:', response.status, errorMessage);
