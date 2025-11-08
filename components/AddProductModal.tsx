@@ -10,8 +10,10 @@ import {
   Alert,
   ScrollView,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { API_URL } from '@/constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -21,13 +23,72 @@ interface AddProductModalProps {
   onProductAdded: () => void;
 }
 
+const UNIDADES_MEDIDA = ['Kg', 'Pzas', 'Combo', 'Bolsa'];
+
 export default function AddProductModal({ isVisible, onClose, onProductAdded }: AddProductModalProps) {
   const [descripcion, setDescripcion] = useState('');
   const [unidadMedida, setUnidadMedida] = useState('');
   const [precio, setPrecio] = useState('');
-  const [imagen, setImagen] = useState('');
+  const [imagenUri, setImagenUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showUnidadSelector, setShowUnidadSelector] = useState(false);
+
+  const pickImage = async () => {
+    // Solicitar permisos
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permisos necesarios', 'Se necesitan permisos para acceder a la galería.');
+      return;
+    }
+
+    // Mostrar opciones: Galería o Cámara
+    Alert.alert(
+      'Seleccionar Imagen',
+      '¿De dónde quieres seleccionar la imagen?',
+      [
+        {
+          text: 'Galería',
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [4, 3],
+              quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+              setImagenUri(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: 'Cámara',
+          onPress: async () => {
+            const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+            if (cameraStatus.status !== 'granted') {
+              Alert.alert('Permisos necesarios', 'Se necesitan permisos para acceder a la cámara.');
+              return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+              allowsEditing: true,
+              aspect: [4, 3],
+              quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+              setImagenUri(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
 
   const handleAddProduct = async () => {
     if (!descripcion.trim() || !unidadMedida.trim() || !precio.trim()) {
@@ -46,22 +107,33 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
 
     try {
       const token = await AsyncStorage.getItem('authToken');
-      
-      const productData = {
-        descripcion: descripcion.trim(),
-        unidad_medida: unidadMedida.trim(),
-        precio: precioNum,
-        imagen: imagen.trim() || null,
-      };
+
+      // Crear FormData para enviar la imagen
+      const formData = new FormData();
+      formData.append('descripcion', descripcion.trim());
+      formData.append('unidad_medida', unidadMedida.trim());
+      formData.append('precio', precioNum.toString());
+
+      // Si hay una imagen, agregarla al FormData
+      if (imagenUri) {
+        const filename = imagenUri.split('/').pop() || 'imagen.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+        formData.append('imagen', {
+          uri: imagenUri,
+          name: filename,
+          type,
+        } as any);
+      }
 
       console.log('Intentando agregar producto a:', `${API_URL}/products`);
-      console.log('Datos enviados:', productData);
 
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
       };
 
+      // No establecer Content-Type para FormData, el navegador lo hace automáticamente
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
@@ -69,7 +141,7 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
       const response = await fetch(`${API_URL}/products`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(productData),
+        body: formData,
       });
 
       console.log('Respuesta del servidor:', response.status, response.statusText);
@@ -114,7 +186,14 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
     setDescripcion('');
     setUnidadMedida('');
     setPrecio('');
-    setImagen('');
+    setImagenUri(null);
+    setError('');
+    setShowUnidadSelector(false);
+  };
+
+  const selectUnidadMedida = (unidad: string) => {
+    setUnidadMedida(unidad);
+    setShowUnidadSelector(false);
     setError('');
   };
 
@@ -161,18 +240,15 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
             />
 
             <Text style={styles.label}>Unidad de Medida *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ej: kg, unidad, litro"
-              placeholderTextColor="#999"
-              value={unidadMedida}
-              onChangeText={(text) => {
-                setUnidadMedida(text);
-                setError('');
-              }}
-              autoCapitalize="none"
-              editable={!loading}
-            />
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() => !loading && setShowUnidadSelector(true)}
+              disabled={loading}>
+              <Text style={[styles.selectButtonText, !unidadMedida && styles.selectButtonPlaceholder]}>
+                {unidadMedida || 'Selecciona una unidad de medida'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#666" />
+            </TouchableOpacity>
 
             <Text style={styles.label}>Precio *</Text>
             <TextInput
@@ -189,20 +265,28 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
               editable={!loading}
             />
 
-            <Text style={styles.label}>URL de Imagen (opcional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://ejemplo.com/imagen.jpg"
-              placeholderTextColor="#999"
-              value={imagen}
-              onChangeText={(text) => {
-                setImagen(text);
-                setError('');
-              }}
-              autoCapitalize="none"
-              keyboardType="url"
-              editable={!loading}
-            />
+            <Text style={styles.label}>Imagen (opcional)</Text>
+            <TouchableOpacity
+              style={styles.imagePickerButton}
+              onPress={pickImage}
+              disabled={loading}>
+              <Ionicons name="image" size={24} color="#f59e0b" style={{ marginRight: 8 }} />
+              <Text style={styles.imagePickerText}>
+                {imagenUri ? 'Cambiar Imagen' : 'Seleccionar Imagen'}
+              </Text>
+            </TouchableOpacity>
+
+            {imagenUri && (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: imagenUri }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setImagenUri(null)}
+                  disabled={loading}>
+                  <Ionicons name="close-circle" size={24} color="red" />
+                </TouchableOpacity>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
@@ -220,6 +304,45 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
           </ScrollView>
         </View>
       </View>
+
+      {/* Selector de unidad de medida */}
+      {showUnidadSelector && (
+        <View style={styles.selectorOverlay}>
+          <TouchableOpacity
+            style={styles.selectorBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowUnidadSelector(false)}
+          />
+          <View style={styles.selectorContainer}>
+            <View style={styles.selectorHeader}>
+              <Text style={styles.selectorTitle}>Selecciona Unidad de Medida</Text>
+              <TouchableOpacity onPress={() => setShowUnidadSelector(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            {UNIDADES_MEDIDA.map((unidad) => (
+              <TouchableOpacity
+                key={unidad}
+                style={[
+                  styles.selectorOption,
+                  unidadMedida === unidad && styles.selectorOptionSelected,
+                ]}
+                onPress={() => selectUnidadMedida(unidad)}>
+                <Text
+                  style={[
+                    styles.selectorOptionText,
+                    unidadMedida === unidad && styles.selectorOptionTextSelected,
+                  ]}>
+                  {unidad}
+                </Text>
+                {unidadMedida === unidad && (
+                  <Ionicons name="checkmark-circle" size={24} color="#f59e0b" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </Modal>
   );
 }
@@ -316,6 +439,131 @@ const styles = StyleSheet.create({
     color: 'red',
     fontSize: 14,
     flexShrink: 1,
+  },
+  imagePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#f59e0b',
+    borderStyle: 'dashed',
+    marginBottom: 15,
+    backgroundColor: '#fffbf5',
+  },
+  imagePickerText: {
+    color: '#f59e0b',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    marginBottom: 15,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 15,
+    padding: 4,
+  },
+  selectButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Platform.OS === 'ios' ? 15 : 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    marginBottom: 15,
+    backgroundColor: '#f9f9f9',
+  },
+  selectButtonText: {
+    fontSize: 16,
+    color: '#111',
+  },
+  selectButtonPlaceholder: {
+    color: '#999',
+  },
+  selectorOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  selectorBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  selectorContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '80%',
+    maxWidth: 400,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  selectorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+  },
+  selectorTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111',
+  },
+  selectorOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: '#f9f9f9',
+  },
+  selectorOptionSelected: {
+    backgroundColor: '#fffbf5',
+    borderWidth: 2,
+    borderColor: '#f59e0b',
+  },
+  selectorOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectorOptionTextSelected: {
+    fontWeight: '600',
+    color: '#f59e0b',
   },
 });
 
