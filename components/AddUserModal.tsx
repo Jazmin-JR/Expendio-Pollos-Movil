@@ -63,34 +63,56 @@ export default function AddUserModal({ isVisible, onClose, onUserAdded }: AddUse
   const fetchSucursales = async () => {
     try {
       setLoadingSucursales(true);
+      setError('');
+      
       const token = await AsyncStorage.getItem('authToken');
 
       if (!token) {
-        throw new Error('No hay token de autenticación');
+        console.log('No hay token de autenticación para obtener sucursales');
+        setSucursales([]);
+        return;
       }
 
       const headers: Record<string, string> = {
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       };
 
       const endpoint = `${API_URL}/sucursales`;
+      
+      console.log('Obteniendo sucursales desde:', endpoint);
       
       const response = await fetch(endpoint, {
         method: 'GET',
         headers,
       });
 
+      console.log('Respuesta de sucursales:', response.status, response.statusText);
+
       if (response.status === 401) {
         await AsyncStorage.removeItem('authToken');
-        throw new Error('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
+        const errorData = await response.json().catch(() => ({ message: 'Token inválido o expirado' }));
+        throw new Error(errorData.message || 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
       }
 
       if (!response.ok) {
-        throw new Error('Error al obtener sucursales');
+        let errorText = '';
+        let errorData: any = {};
+        
+        try {
+          errorText = await response.text();
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText || `Error ${response.status}` };
+        }
+        
+        console.log(`Error ${response.status} al obtener sucursales:`, errorData);
+        throw new Error(errorData.message || errorData.error || `Error ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Datos de sucursales recibidos:', data);
       
       let sucursalesData: Sucursal[] = [];
       
@@ -100,12 +122,43 @@ export default function AddUserModal({ isVisible, onClose, onUserAdded }: AddUse
         sucursalesData = data;
       } else if (Array.isArray(data.sucursales)) {
         sucursalesData = data.sucursales;
+      } else if (data && typeof data === 'object') {
+        const keys = Object.keys(data);
+        if (keys.length > 0) {
+          const firstKey = keys[0];
+          if (Array.isArray(data[firstKey])) {
+            sucursalesData = data[firstKey];
+          }
+        }
+      }
+
+      if (sucursalesData.length === 0) {
+        console.warn('No se encontraron sucursales, pero la respuesta fue exitosa');
+      } else {
+        console.log(`Se encontraron ${sucursalesData.length} sucursales`);
       }
 
       setSucursales(sucursalesData);
+      setError('');
     } catch (err) {
       console.error('Error al obtener sucursales:', err);
-      // No mostrar error si no se pueden obtener, usar la del usuario actual
+      const errorMessage = err instanceof Error ? err.message : 'Error al obtener sucursales';
+      
+      if (errorMessage.includes('token') || 
+          errorMessage.includes('autenticación') || 
+          errorMessage.includes('sesión') ||
+          errorMessage.includes('expirado') ||
+          errorMessage.includes('inválido')) {
+        Alert.alert(
+          'Error de autenticación',
+          errorMessage,
+          [{ text: 'OK', onPress: () => onClose() }]
+        );
+      } else {
+        setError(`No se pudieron cargar las sucursales: ${errorMessage}`);
+      }
+      
+      setSucursales([]);
     } finally {
       setLoadingSucursales(false);
     }
