@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -45,6 +45,23 @@ interface VentasDia {
   cantidad_pedidos?: number;
 }
 
+interface Reporte {
+  id_report?: number;
+  id_sucursal?: number;
+  total_ventas?: string;
+  fecha?: string;
+  sucursal?: {
+    id_sucursal?: number;
+    nombre?: string;
+  };
+}
+
+interface Sincronizacion {
+  id_sincronizacion?: number;
+  id_sucursal?: number;
+  pendiente?: boolean;
+}
+
 export default function HomeScreen() {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [sucursal, setSucursal] = useState<Sucursal | null>(null);
@@ -55,12 +72,29 @@ export default function HomeScreen() {
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [showUsuarioModal, setShowUsuarioModal] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  
+  // Estados para estadísticas
+  const [reporteActual, setReporteActual] = useState<Reporte | null>(null);
+  const [reportes, setReportes] = useState<Reporte[]>([]);
+  const [loadingReporte, setLoadingReporte] = useState(false);
+  const [loadingReportes, setLoadingReportes] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [fechaFiltro, setFechaFiltro] = useState<string>('');
+  const [fechaDesde, setFechaDesde] = useState<string>('');
+  const [fechaHasta, setFechaHasta] = useState<string>('');
 
   useEffect(() => {
     loadUserData();
     getSucursalInfo();
     getVentasDia();
   }, []);
+
+  // Cargar reportes cuando se obtenga la sucursal
+  useEffect(() => {
+    if (sucursal?.id_sucursal || usuario?.id_sucursal) {
+      getReportes();
+    }
+  }, [sucursal?.id_sucursal, usuario?.id_sucursal]);
 
   const loadUserData = async () => {
     try {
@@ -361,6 +395,234 @@ export default function HomeScreen() {
     }
   };
 
+  // Función para solicitar sincronización
+  const solicitarSincronizacion = async () => {
+    try {
+      const idSucursal = sucursal?.id_sucursal || usuario?.id_sucursal;
+      if (!idSucursal) {
+        Alert.alert('Error', 'No se pudo obtener el ID de la sucursal');
+        return;
+      }
+
+      setSincronizando(true);
+      const token = await AsyncStorage.getItem('authToken');
+      
+      if (!token) {
+        Alert.alert('Error', 'No hay token de autenticación. Por favor, inicia sesión de nuevo.');
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+
+      const response = await fetch(`${API_URL}/sales-integration/request-sync/${idSucursal}`, {
+        method: 'POST',
+        headers,
+      });
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem('authToken');
+        throw new Error('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        Alert.alert('Éxito', data.message || 'Sincronización solicitada correctamente');
+        // Recargar reportes después de la sincronización
+        setTimeout(() => {
+          getReportes();
+        }, 2000);
+      } else {
+        throw new Error(data.message || 'Error al solicitar sincronización');
+      }
+    } catch (err) {
+      console.error('Error al solicitar sincronización:', err);
+      Alert.alert(
+        'Error',
+        err instanceof Error ? err.message : 'Error al solicitar la sincronización'
+      );
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+  // Función para obtener reporte de una fecha específica
+  const getReportePorFecha = async (fecha: string) => {
+    try {
+      const idSucursal = sucursal?.id_sucursal || usuario?.id_sucursal;
+      if (!idSucursal) {
+        Alert.alert('Error', 'No se pudo obtener el ID de la sucursal');
+        return;
+      }
+
+      setLoadingReporte(true);
+      const token = await AsyncStorage.getItem('authToken');
+      
+      if (!token) {
+        Alert.alert('Error', 'No hay token de autenticación. Por favor, inicia sesión de nuevo.');
+        setLoadingReporte(false);
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+
+      const response = await fetch(`${API_URL}/sales-integration/reporte/${idSucursal}/${fecha}`, {
+        method: 'GET',
+        headers,
+      });
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem('authToken');
+        throw new Error('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        setReporteActual(data.data);
+      } else {
+        setReporteActual(null);
+      }
+    } catch (err) {
+      console.error('Error al obtener reporte:', err);
+      setReporteActual(null);
+      Alert.alert(
+        'Error',
+        err instanceof Error ? err.message : 'Error al obtener el reporte'
+      );
+    } finally {
+      setLoadingReporte(false);
+    }
+  };
+
+  // Función para obtener todos los reportes
+  const getReportes = async () => {
+    try {
+      const idSucursal = sucursal?.id_sucursal || usuario?.id_sucursal;
+      if (!idSucursal) {
+        console.log('No hay idSucursal disponible');
+        return;
+      }
+
+      setLoadingReportes(true);
+      const token = await AsyncStorage.getItem('authToken');
+      
+      if (!token) {
+        console.log('No hay token de autenticación para obtener reportes');
+        setReportes([]);
+        setLoadingReportes(false);
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+
+      let url = `${API_URL}/sales-integration/reportes/${idSucursal}`;
+      
+      // Si hay filtros de fecha, agregarlos
+      if (fechaDesde && fechaHasta) {
+        url += `?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
+      }
+
+      console.log('Obteniendo reportes desde:', url);
+      console.log('Token presente:', !!token);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+      });
+
+      console.log('Respuesta de reportes:', response.status, response.statusText);
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem('authToken');
+        console.log('Token inválido o expirado');
+        setReportes([]);
+        setLoadingReportes(false);
+        return;
+      }
+
+      if (!response.ok) {
+        let errorText = '';
+        let errorData: any = {};
+        
+        try {
+          errorText = await response.text();
+          errorData = JSON.parse(errorText);
+        } catch (parseError) {
+          errorData = { message: errorText || `Error ${response.status}` };
+        }
+        
+        console.error('Error al obtener reportes:', {
+          status: response.status,
+          statusText: response.statusText,
+          message: errorData.message || errorData.error || 'Error desconocido',
+          data: errorData
+        });
+        setReportes([]);
+        setLoadingReportes(false);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Datos de reportes recibidos:', data);
+      
+      if (data.success && Array.isArray(data.data)) {
+        console.log(`Se obtuvieron ${data.data.length} reportes`);
+        setReportes(data.data);
+      } else if (data.success && data.data === null) {
+        console.log('No hay reportes disponibles (data es null)');
+        setReportes([]);
+      } else {
+        console.log('Estructura de datos inesperada:', data);
+        setReportes([]);
+      }
+    } catch (err) {
+      console.error('Error al obtener reportes (catch):', err);
+      if (err instanceof Error) {
+        console.error('Mensaje de error:', err.message);
+        console.error('Stack:', err.stack);
+      }
+      setReportes([]);
+    } finally {
+      setLoadingReportes(false);
+    }
+  };
+
+  // Función para formatear fecha
+  const formatearFecha = (fecha?: string) => {
+    if (!fecha) return 'N/A';
+    try {
+      const date = new Date(fecha);
+      return date.toLocaleDateString('es-MX', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return fecha;
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -450,6 +712,144 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Sección de Estadísticas */}
+        {sucursal && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <Ionicons name="stats-chart" size={24} color="#f59e0b" />
+                <Text style={styles.cardTitle}>Estadísticas de Ventas</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={solicitarSincronizacion} 
+                disabled={sincronizando}
+                style={styles.syncButton}>
+                {sincronizando ? (
+                  <ActivityIndicator size="small" color="#f59e0b" />
+                ) : (
+                  <Ionicons name="sync" size={20} color="#f59e0b" />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Filtros de fecha */}
+            <View style={styles.filtersContainer}>
+              <View style={styles.filterRow}>
+                <Text style={styles.filterLabel}>Buscar por fecha:</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  placeholder="YYYY-MM-DD"
+                  value={fechaFiltro}
+                  onChangeText={setFechaFiltro}
+                  placeholderTextColor="#999"
+                />
+                <TouchableOpacity
+                  style={styles.filterButton}
+                  onPress={() => {
+                    if (fechaFiltro) {
+                      getReportePorFecha(fechaFiltro);
+                    }
+                  }}
+                  disabled={loadingReporte || !fechaFiltro}>
+                  <Ionicons name="search" size={18} color="white" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.filterRow}>
+                <Text style={styles.filterLabel}>Rango de fechas:</Text>
+                <View style={styles.dateRangeContainer}>
+                  <TextInput
+                    style={[styles.dateInput, { flex: 1 }]}
+                    placeholder="Desde (YYYY-MM-DD)"
+                    value={fechaDesde}
+                    onChangeText={setFechaDesde}
+                    placeholderTextColor="#999"
+                  />
+                  <TextInput
+                    style={[styles.dateInput, { flex: 1 }]}
+                    placeholder="Hasta (YYYY-MM-DD)"
+                    value={fechaHasta}
+                    onChangeText={setFechaHasta}
+                    placeholderTextColor="#999"
+                  />
+                  <TouchableOpacity
+                    style={styles.filterButton}
+                    onPress={getReportes}
+                    disabled={loadingReportes}>
+                    <Ionicons name="filter" size={18} color="white" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Reporte de fecha específica */}
+            {loadingReporte ? (
+              <View style={styles.statsLoading}>
+                <ActivityIndicator size="small" color="#f59e0b" />
+                <Text style={styles.statsLoadingText}>Cargando reporte...</Text>
+              </View>
+            ) : reporteActual ? (
+              <View style={styles.reporteCard}>
+                <View style={styles.reporteHeader}>
+                  <Ionicons name="document-text" size={20} color="#10b981" />
+                  <Text style={styles.reporteTitle}>Reporte del {formatearFecha(reporteActual.fecha)}</Text>
+                </View>
+                <View style={styles.reporteContent}>
+                  <View style={styles.reporteItem}>
+                    <Text style={styles.reporteLabel}>Total de Ventas:</Text>
+                    <Text style={styles.reporteValue}>
+                      ${parseFloat(reporteActual.total_ventas || '0').toFixed(2)}
+                    </Text>
+                  </View>
+                  {reporteActual.sucursal?.nombre && (
+                    <View style={styles.reporteItem}>
+                      <Text style={styles.reporteLabel}>Sucursal:</Text>
+                      <Text style={styles.reporteValue}>{reporteActual.sucursal.nombre}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Lista de reportes */}
+            {loadingReportes ? (
+              <View style={styles.statsLoading}>
+                <ActivityIndicator size="small" color="#f59e0b" />
+                <Text style={styles.statsLoadingText}>Cargando reportes...</Text>
+              </View>
+            ) : reportes.length > 0 ? (
+              <View style={styles.reportesList}>
+                <Text style={styles.reportesListTitle}>
+                  {fechaDesde && fechaHasta 
+                    ? `Reportes del ${formatearFecha(fechaDesde)} al ${formatearFecha(fechaHasta)}`
+                    : 'Todos los Reportes'}
+                </Text>
+                {reportes.map((reporte, index) => (
+                  <View key={reporte.id_report || index} style={styles.reporteItemCard}>
+                    <View style={styles.reporteItemHeader}>
+                      <Ionicons name="calendar" size={16} color="#666" />
+                      <Text style={styles.reporteItemDate}>
+                        {formatearFecha(reporte.fecha)}
+                      </Text>
+                    </View>
+                    <Text style={styles.reporteItemValue}>
+                      ${parseFloat(reporte.total_ventas || '0').toFixed(2)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : !loadingReportes && !loadingReporte ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyStateText}>No hay reportes disponibles</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Usa los filtros para buscar reportes o solicita una sincronización
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* Sección de Ubicación de Sucursal */}
         {sucursal && (
@@ -893,5 +1293,153 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  // Estilos para estadísticas
+  syncButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff5e6',
+  },
+  filtersContainer: {
+    marginTop: 12,
+    gap: 16,
+  },
+  filterRow: {
+    gap: 8,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  dateRangeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+    minWidth: 120,
+  },
+  filterButton: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 44,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  statsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 20,
+    justifyContent: 'center',
+  },
+  statsLoadingText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  reporteCard: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  reporteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  reporteTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111',
+  },
+  reporteContent: {
+    gap: 12,
+  },
+  reporteItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reporteLabel: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  reporteValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#10b981',
+  },
+  reportesList: {
+    marginTop: 16,
+    gap: 12,
+  },
+  reportesListTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111',
+    marginBottom: 8,
+  },
+  reporteItemCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+  },
+  reporteItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  reporteItemDate: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  reporteItemValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#f59e0b',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });

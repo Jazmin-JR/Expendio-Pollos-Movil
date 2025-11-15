@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 
-const PHYSICAL_DEVICE_IP = '192.168.1.18'; 
+const PHYSICAL_DEVICE_IP = '192.168.1.10'; 
 const USE_PHYSICAL_IP = true; 
 
 const getApiBaseUrl = () => {
