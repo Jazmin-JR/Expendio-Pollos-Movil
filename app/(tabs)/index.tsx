@@ -208,8 +208,33 @@ export default function HomeScreen() {
         if (response.status === 401) {
           console.log('Token inválido o expirado');
           await AsyncStorage.removeItem('authToken');
+          throw new Error('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
         }
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+        
+        // Si el endpoint no existe (404), simplemente no mostrar la sección de sucursal
+        if (response.status === 404) {
+          console.log('Endpoint de sucursal no disponible en este servidor');
+          setSucursal(null);
+          setErrorSucursal('');
+          setLoadingSucursal(false);
+          return;
+        }
+        
+        // Para otros errores, intentar obtener el mensaje del servidor
+        let errorMessage = `Error ${response.status}: ${response.statusText}`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMessage = errorData.message || errorData.error || errorMessage;
+            } catch {
+              errorMessage = errorText || errorMessage;
+            }
+          }
+        } catch {}
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();

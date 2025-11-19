@@ -7,8 +7,13 @@ export type ThemedViewProps = ViewProps & {
   darkColor?: string;
 };
 
-export function ThemedView({ style, lightColor, darkColor, ...otherProps }: ThemedViewProps) {
+export function ThemedView({ style, lightColor, darkColor, pointerEvents, ...otherProps }: ThemedViewProps) {
   const backgroundColor = useThemeColor({ light: lightColor, dark: darkColor }, 'background');
 
-  return <View style={[{ backgroundColor }, style]} {...otherProps} />;
+  // Mover pointerEvents al style para evitar el warning en react-native-web
+  const viewStyle = pointerEvents 
+    ? [{ backgroundColor }, style, { pointerEvents }]
+    : [{ backgroundColor }, style];
+
+  return <View style={viewStyle} {...otherProps} />;
 }

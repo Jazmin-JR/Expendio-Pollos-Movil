@@ -146,25 +146,47 @@ export default function AddProductModal({ isVisible, onClose, onProductAdded }: 
 
       console.log('Respuesta del servidor:', response.status, response.statusText);
 
+      // Leer la respuesta como texto primero (solo se puede leer una vez)
+      const responseText = await response.text();
+      console.log('Respuesta del servidor (texto):', responseText || '(vacía)');
+
       if (!response.ok) {
-        let errorMessage = 'Error al agregar producto';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch (parseError) {
-          console.log('No se pudo parsear el error como JSON:', parseError);
+        let errorMessage = `Error ${response.status}: ${response.statusText}`;
+        
+        if (responseText && responseText.trim()) {
+          // Si hay texto, intentar parsear como JSON
           try {
-            const textError = await response.text();
-            console.log('Error como texto:', textError);
-            if (textError) {
-              errorMessage = textError;
-            }
-          } catch {}
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.message || errorData.error || errorData.msg || errorMessage;
+            console.log('Error parseado:', errorData);
+          } catch {
+            // Si no es JSON, usar el texto directamente
+            errorMessage = responseText || errorMessage;
+          }
+        } else {
+          // Si la respuesta está vacía, usar un mensaje más descriptivo según el código
+          if (response.status === 400) {
+            errorMessage = 'Datos inválidos. Verifica que todos los campos estén correctos.';
+          } else if (response.status === 401) {
+            errorMessage = 'No autorizado. Por favor, inicia sesión de nuevo.';
+          } else if (response.status === 500) {
+            errorMessage = 'Error interno del servidor. Intenta más tarde.';
+          }
         }
+        
+        console.error('Error al agregar producto:', errorMessage);
         throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      // Si la respuesta fue exitosa, intentar parsear como JSON
+      let data: any = {};
+      if (responseText && responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          console.log('Respuesta no es JSON válido, pero la operación fue exitosa');
+        }
+      }
       Alert.alert('Éxito', 'Producto agregado correctamente.');
       onProductAdded();
       onClose();
